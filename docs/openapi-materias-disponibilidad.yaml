@@ -1,0 +1,585 @@
+openapi: 3.0.3
+info:
+  title: EduMentor Hub API - Módulo de Materias y Disponibilidad
+  version: 1.0.0
+  description: Endpoints CRUD del catálogo de materias y gestión de bloques horarios de disponibilidad de tutores (Persona 2).
+
+paths:
+  /api/materias:
+    get:
+      tags:
+        - Materias
+      summary: Listar el catálogo de materias
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: soloActivas
+          in: query
+          required: false
+          description: Si es true, devuelve únicamente materias activas.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Listado de materias ordenado por código
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MateriaResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Materias
+      summary: Crear una nueva materia (solo COORDINADOR)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MateriaRequest'
+      responses:
+        '201':
+          description: Materia creada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MateriaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/materias/{id}:
+    get:
+      tags:
+        - Materias
+      summary: Obtener detalle de una materia por ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Materia encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MateriaResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Materias
+      summary: Actualizar una materia existente (solo COORDINADOR)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MateriaRequest'
+      responses:
+        '200':
+          description: Materia actualizada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MateriaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Materias
+      summary: Eliminar una materia por ID (solo COORDINADOR)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Materia eliminada exitosamente
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/disponibilidades/mias:
+    get:
+      tags:
+        - Disponibilidades
+      summary: Listar los bloques horarios del tutor autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Listado de bloques del tutor actual
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DisponibilidadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/disponibilidades/tutor/{tutorId}:
+    get:
+      tags:
+        - Disponibilidades
+      summary: Listar los bloques horarios de un tutor específico
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tutorId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: soloActivas
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Bloques horarios del tutor
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DisponibilidadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/disponibilidades/verificar:
+    get:
+      tags:
+        - Disponibilidades
+      summary: Verificar si un tutor está disponible en una fecha, hora y duración dadas
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tutorId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: fechaHora
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2026-11-23T08:30:00'
+        - name: duracion
+          in: query
+          required: true
+          description: Duración en minutos
+          schema:
+            type: integer
+            minimum: 1
+            example: 60
+      responses:
+        '200':
+          description: Resultado de disponibilidad
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disponible:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/disponibilidades:
+    post:
+      tags:
+        - Disponibilidades
+      summary: Crear un nuevo bloque de disponibilidad (TUTOR o COORDINADOR)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisponibilidadRequest'
+      responses:
+        '201':
+          description: Bloque creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisponibilidadResponse'
+        '400':
+          description: Rango de horas inválido o traslape con otro bloque activo (RFC 7807)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/disponibilidades/{id}:
+    put:
+      tags:
+        - Disponibilidades
+      summary: Actualizar un bloque de disponibilidad existente
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisponibilidadRequest'
+      responses:
+        '200':
+          description: Bloque actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisponibilidadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Disponibilidades
+      summary: Eliminar un bloque de disponibilidad
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Bloque eliminado exitosamente
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/disponibilidades/{id}/activar:
+    put:
+      tags:
+        - Disponibilidades
+      summary: Activar un bloque de disponibilidad (revalida traslapes activos)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Bloque activado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisponibilidadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/disponibilidades/{id}/desactivar:
+    put:
+      tags:
+        - Disponibilidades
+      summary: Desactivar un bloque de disponibilidad
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Bloque desactivado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisponibilidadResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequestError:
+      description: Error de validación o regla de negocio (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnauthorizedError:
+      description: Token ausente, expirado o inválido (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ForbiddenError:
+      description: Sin permisos suficientes para el rol actual (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFoundError:
+      description: Recurso no encontrado (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    InternalServerError:
+      description: Error interno del servidor (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+  schemas:
+    DiaSemana:
+      type: string
+      enum: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY]
+
+    MateriaRequest:
+      type: object
+      required: [codigo, nombre, creditos]
+      properties:
+        codigo:
+          type: string
+          maxLength: 20
+          example: IF0009
+        nombre:
+          type: string
+          maxLength: 100
+          example: Desarrollo de Software IV
+        descripcion:
+          type: string
+          maxLength: 500
+          nullable: true
+          example: Arquitectura web empresarial con Spring Boot y Angular
+        creditos:
+          type: integer
+          minimum: 1
+          maximum: 20
+          example: 4
+        activa:
+          type: boolean
+          default: true
+
+    MateriaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        codigo:
+          type: string
+          example: IF0009
+        nombre:
+          type: string
+          example: Desarrollo de Software IV
+        descripcion:
+          type: string
+          nullable: true
+          example: Arquitectura web empresarial con Spring Boot y Angular
+        creditos:
+          type: integer
+          example: 4
+        activa:
+          type: boolean
+          example: true
+
+    DisponibilidadRequest:
+      type: object
+      required: [diaSemana, horaInicio, horaFin]
+      properties:
+        tutorId:
+          type: integer
+          format: int64
+          nullable: true
+          description: Opcional cuando el tutor autenticado crea su propio bloque; requerido para COORDINADOR.
+          example: 2
+        diaSemana:
+          $ref: '#/components/schemas/DiaSemana'
+        horaInicio:
+          type: string
+          pattern: '^\d{2}:\d{2}(:\d{2})?$'
+          example: '08:00'
+        horaFin:
+          type: string
+          pattern: '^\d{2}:\d{2}(:\d{2})?$'
+          example: '10:00'
+        activo:
+          type: boolean
+          default: true
+
+    DisponibilidadResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        tutorId:
+          type: integer
+          format: int64
+          example: 2
+        tutorNombre:
+          type: string
+          example: Sebastián Quirós
+        diaSemana:
+          $ref: '#/components/schemas/DiaSemana'
+        horaInicio:
+          type: string
+          example: '08:00:00'
+        horaFin:
+          type: string
+          example: '10:00:00'
+        activo:
+          type: boolean
+          example: true
+
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+          example: about:blank
+        title:
+          type: string
+          example: Violación de regla de negocio
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: El bloque de disponibilidad se traslapa con otro bloque activo del mismo tutor para el día MONDAY
+        instance:
+          type: string
+          format: uri
+          example: /api/disponibilidades
