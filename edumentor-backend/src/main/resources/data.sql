@@ -17,3 +17,8 @@ VALUES
 (2, 'MONDAY', '14:00:00', '16:00:00', TRUE),
 (2, 'WEDNESDAY', '09:00:00', '12:00:00', TRUE),
 (2, 'FRIDAY', '13:00:00', '15:00:00', TRUE);
+
+INSERT INTO sesiones_tutoria (estudiante_id, tutor_id, materia_id, fecha_hora, fecha_hora_fin, duracion_minutos, modalidad, estado, enlace_o_ubicacion, fecha_creacion)
+VALUES
+(1, 2, 1, DATEADD(HOUR, 8, CAST(DATEADD(DAY, -7, CURRENT_DATE) AS TIMESTAMP)), DATEADD(HOUR, 9, CAST(DATEADD(DAY, -7, CURRENT_DATE) AS TIMESTAMP)), 60, 'VIRTUAL', 'COMPLETED', 'https://meet.google.com/edu-ment-or1', DATEADD(DAY, -10, CURRENT_TIMESTAMP)),
+(1, 2, 2, DATEADD(HOUR, 14, CAST(DATEADD(DAY, 10, CURRENT_DATE) AS TIMESTAMP)), DATEADD(HOUR, 15, CAST(DATEADD(DAY, 10, CURRENT_DATE) AS TIMESTAMP)), 60, 'PRESENCIAL', 'CONFIRMED', 'Aula 201, Sede Paraíso', CURRENT_TIMESTAMP);
