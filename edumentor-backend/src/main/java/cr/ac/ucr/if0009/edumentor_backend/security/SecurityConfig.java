@@ -59,7 +59,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/materias/**").authenticated()
                 // Reglas específicas de roles (base para P2, P3, P4)
                 .requestMatchers("/api/materias/**").hasRole("COORDINADOR")
-                .requestMatchers("/api/disponibilidades/**").hasAnyRole("TUTOR", "ESTUDIANTE", "COORDINADOR")
+                .requestMatchers(HttpMethod.GET, "/api/disponibilidades/**").hasAnyRole("TUTOR", "ESTUDIANTE", "COORDINADOR")
+                .requestMatchers("/api/disponibilidades/**").hasAnyRole("TUTOR", "COORDINADOR")
                 // Cualquier otra ruta requiere estar autenticado
                 .anyRequest().authenticated()
             )
