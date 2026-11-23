@@ -61,6 +61,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/materias/**").hasRole("COORDINADOR")
                 .requestMatchers(HttpMethod.GET, "/api/disponibilidades/**").hasAnyRole("TUTOR", "ESTUDIANTE", "COORDINADOR")
                 .requestMatchers("/api/disponibilidades/**").hasAnyRole("TUTOR", "COORDINADOR")
+                .requestMatchers(HttpMethod.POST, "/api/sesiones").hasRole("ESTUDIANTE")
+                .requestMatchers(HttpMethod.PUT,
+                        "/api/sesiones/*/aceptar",
+                        "/api/sesiones/*/rechazar",
+                        "/api/sesiones/*/iniciar",
+                        "/api/sesiones/*/finalizar").hasRole("TUTOR")
+                .requestMatchers(HttpMethod.PUT, "/api/sesiones/*/cancelar").hasAnyRole("ESTUDIANTE", "TUTOR", "COORDINADOR")
                 // Cualquier otra ruta requiere estar autenticado
                 .anyRequest().authenticated()
             )
