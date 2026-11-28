@@ -53,6 +53,7 @@ erDiagram
         BIGINT tutor_id FK "NOT NULL -> usuarios.id"
         BIGINT materia_id FK "NOT NULL -> materias.id"
         TIMESTAMP fecha_hora "NOT NULL"
+        TIMESTAMP fecha_hora_fin "NOT NULL, fecha_hora + duracion_minutos"
         INT duracion_minutos "NOT NULL, CHECK > 0"
         VARCHAR(20) modalidad "NOT NULL (VIRTUAL|PRESENCIAL)"
         VARCHAR(20) estado "NOT NULL (REQUESTED|CONFIRMED|REJECTED|CANCELLED|IN_SESSION|COMPLETED|REVIEWED)"
@@ -143,6 +144,7 @@ Registra cada reserva de tutoría solicitada por un estudiante con un tutor para
 | `tutor_id` | `tutor` | `BIGINT` | `FK -> usuarios(id)`, `NOT NULL` | Tutor que imparte la sesión |
 | `materia_id` | `materia` | `BIGINT` | `FK -> materias(id)`, `NOT NULL` | Materia objeto de la tutoría |
 | `fecha_hora` | `fechaHora` | `TIMESTAMP` / `DATETIME2` | `NOT NULL` | Fecha y hora programada de inicio |
+| `fecha_hora_fin` | `fechaHoraFin` | `TIMESTAMP` / `DATETIME2` | `NOT NULL` | Fin calculado (`fecha_hora + duracion_minutos`); permite detectar traslapes con una sola consulta |
 | `duracion_minutos` | `duracionMinutos` | `INT` | `NOT NULL`, `CHECK (duracion_minutos > 0)` | Duración planificada en minutos |
 | `modalidad` | `modalidad` | `VARCHAR(20)` | `NOT NULL`, `ENUM` | `VIRTUAL`, `PRESENCIAL` |
 | `estado` | `estado` | `VARCHAR(20)` | `NOT NULL`, `ENUM` | `REQUESTED`, `CONFIRMED`, `REJECTED`, `CANCELLED`, `IN_SESSION`, `COMPLETED`, `REVIEWED` |

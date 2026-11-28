@@ -1,0 +1,535 @@
+openapi: 3.0.3
+info:
+  title: EduMentor Hub API - Módulo de Sesiones de Tutoría
+  version: 1.0.0
+  description: |
+    Solicitud de sesiones de tutoría y su máquina de estados (Persona 3).
+
+    Transiciones válidas:
+    - REQUESTED → CONFIRMED (aceptar, sin traslape) | REJECTED (aceptar con traslape, o rechazar) | CANCELLED (cancelar)
+    - CONFIRMED → IN_SESSION (iniciar) | CANCELLED (cancelar)
+    - IN_SESSION → COMPLETED (finalizar)
+    - COMPLETED → REVIEWED (evaluación del estudiante, endpoint del módulo P4)
+
+    REJECTED, CANCELLED y REVIEWED son estados finales. COMPLETED solo puede pasar a REVIEWED.
+    Cualquier otra transición responde 400 (ReglaNegocioException).
+
+    Reglas de tiempo (configurables en application.properties):
+    - sesiones.tolerancia-inicio (15m): iniciar se permite desde fechaHora - 15 min hasta antes de fechaHoraFin.
+    - sesiones.tolerancia-fin (15m): finalizar se permite desde fechaHoraFin - 15 min.
+    - sesiones.anticipacion-cancelacion (2h): anticipación mínima para cancelar una sesión CONFIRMED.
+
+    Reglas de cancelación:
+    - ESTUDIANTE: REQUESTED en cualquier momento antes de fechaHora; CONFIRMED con 2 h o más de anticipación.
+    - TUTOR: CONFIRMED con 2 h o más de anticipación. Una REQUESTED no se cancela, se rechaza.
+    - COORDINADOR: REQUESTED o CONFIRMED en cualquier momento antes de fechaHora (cancelación administrativa).
+    - IN_SESSION, COMPLETED, REVIEWED, REJECTED y CANCELLED no se pueden cancelar.
+
+    Modalidad y enlace:
+    - VIRTUAL: enlaceOUbicacion obligatorio, URL válida con esquema https, sin usuario ni contraseña.
+    - PRESENCIAL: enlaceOUbicacion obligatorio con al menos 3 caracteres (aula o lugar).
+
+    Zona horaria: todas las fechas de este módulo (fechaHora, fechaHoraFin, iniciableDesde, finalizableDesde,
+    cancelableHasta, fechaCreacion) se envían y reciben como fecha-hora local de Costa Rica (America/Costa_Rica,
+    UTC-06:00, sin horario de verano), sin sufijo de zona. El backend usa un Clock fijo en esa zona
+    (sesiones.zona-horaria) y el frontend las interpreta siempre con desfase -06:00, sin depender de la zona del
+    navegador ni del servidor. La validación de "fecha futura" se hace solo en el servicio con ese mismo Clock.
+
+    Duración: entre 30 y 240 minutos y múltiplo de 30 (DURACION_INVALIDA si no lo es).
+
+    Códigos de error: los 400 de reglas de negocio incluyen las propiedades "codigo" (estable, para que el frontend
+    traduzca el mensaje) y, cuando aplica, "parametros". Códigos: TUTOR_ROL_INVALIDO, MATERIA_INACTIVA,
+    ENLACE_REQUERIDO, ENLACE_INVALIDO, UBICACION_REQUERIDA, ENLACE_LARGO, FECHA_PASADA, DURACION_INVALIDA (paso),
+    TUTOR_SIN_DISPONIBILIDAD, TRASLAPE_TUTOR, TRASLAPE_ESTUDIANTE, TRANSICION_INVALIDA (accion, estado),
+    SESION_YA_INICIO, TUTOR_DEBE_RECHAZAR, CANCELACION_TARDIA (horas), INICIO_ANTICIPADO (desde),
+    HORARIO_TERMINADO, FIN_ANTICIPADO (desde). El texto de "detail" es solo informativo.
+
+    Concurrencia: aceptar bloquea con PESSIMISTIC_WRITE la sesión, el tutor y el estudiante antes de revalidar el
+    traslape, por lo que dos aceptaciones simultáneas que se traslapan nunca quedan ambas en CONFIRMED.
+    Las demás transiciones bloquean la fila de la sesión.
+
+paths:
+  /api/sesiones:
+    post:
+      tags:
+        - Sesiones
+      summary: Solicitar una sesión de tutoría (solo ESTUDIANTE)
+      description: |
+        Valida que la materia esté activa, que el usuario indicado sea TUTOR, que el enlace o la ubicación
+        correspondan a la modalidad, que la fecha sea futura, que el tutor tenga disponibilidad activa que cubra
+        toda la duración y que no exista traslape con sesiones CONFIRMED o IN_SESSION del tutor ni del estudiante.
+        La sesión se crea en estado REQUESTED.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SesionRequest'
+      responses:
+        '201':
+          description: Sesión creada en estado REQUESTED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/mias:
+    get:
+      tags:
+        - Sesiones
+      summary: Listar las sesiones del usuario autenticado
+      description: |
+        ESTUDIANTE recibe las sesiones que solicitó, TUTOR las que imparte y COORDINADOR todas las sesiones.
+        Ordenadas por fecha descendente y cargadas con JOIN FETCH (sin N+1).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Listado de sesiones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SesionResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/tutores:
+    get:
+      tags:
+        - Sesiones
+      summary: Listar tutores para el formulario de reserva
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Tutores ordenados por nombre
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TutorResumenResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/{id}:
+    get:
+      tags:
+        - Sesiones
+      summary: Obtener el detalle de una sesión (participantes o COORDINADOR)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      responses:
+        '200':
+          description: Detalle de la sesión
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/{id}/aceptar:
+    put:
+      tags:
+        - Sesiones
+      summary: Aceptar una sesión (solo el TUTOR asignado)
+      description: |
+        Solo desde REQUESTED y antes de fechaHora. Bloquea la sesión, el tutor y el estudiante y revalida el traslape
+        contra sesiones CONFIRMED o IN_SESSION de ambos: si no hay traslape la sesión pasa a CONFIRMED; si lo hay pasa
+        a REJECTED. En ambos casos responde 200. Aceptar una sesión que ya no está en REQUESTED responde 400.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      responses:
+        '200':
+          description: Sesión en estado CONFIRMED o REJECTED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/{id}/rechazar:
+    put:
+      tags:
+        - Sesiones
+      summary: Rechazar una sesión (solo el TUTOR asignado)
+      description: Solo desde REQUESTED. La sesión pasa a REJECTED.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      responses:
+        '200':
+          description: Sesión en estado REJECTED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/{id}/cancelar:
+    put:
+      tags:
+        - Sesiones
+      summary: Cancelar una sesión (ESTUDIANTE o TUTOR participante, o COORDINADOR)
+      description: |
+        Desde REQUESTED o CONFIRMED y siempre antes de fechaHora. La sesión pasa a CANCELLED.
+        ESTUDIANTE: REQUESTED sin restricción de anticipación; CONFIRMED con 2 h o más.
+        TUTOR: solo CONFIRMED con 2 h o más (una REQUESTED se rechaza, no se cancela).
+        COORDINADOR: REQUESTED o CONFIRMED sin restricción de anticipación.
+        El campo cancelableHasta de SesionResponse se calcula para el usuario autenticado que hace la consulta,
+        por lo que ya incluye la regla administrativa del coordinador.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      responses:
+        '200':
+          description: Sesión en estado CANCELLED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '400':
+          description: Transición inválida o cancelación con menos de 2 horas de anticipación (RFC 7807)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              example:
+                type: about:blank
+                title: Violación de regla de negocio
+                status: 400
+                detail: Solo se puede cancelar una sesión con al menos 2 horas de anticipación
+                instance: /api/sesiones/5/cancelar
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/{id}/iniciar:
+    put:
+      tags:
+        - Sesiones
+      summary: Iniciar una sesión (solo el TUTOR asignado)
+      description: |
+        Solo desde CONFIRMED y entre iniciableDesde (fechaHora - tolerancia de inicio) y fechaHoraFin.
+        Antes o después de esa ventana responde 400. La sesión pasa a IN_SESSION.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      responses:
+        '200':
+          description: Sesión en estado IN_SESSION
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/sesiones/{id}/finalizar:
+    put:
+      tags:
+        - Sesiones
+      summary: Finalizar una sesión (solo el TUTOR asignado)
+      description: |
+        Solo desde IN_SESSION y a partir de finalizableDesde (fechaHoraFin - tolerancia de fin); antes responde 400.
+        La sesión pasa a COMPLETED y queda lista para que su estudiante la evalúe (módulo P4).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      responses:
+        '200':
+          description: Sesión en estado COMPLETED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SesionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 1
+
+  responses:
+    BadRequestError:
+      description: Error de validación, transición inválida o regla de negocio (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnauthorizedError:
+      description: Token ausente, expirado o inválido (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ForbiddenError:
+      description: El rol no tiene permiso o el usuario no participa en la sesión (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFoundError:
+      description: Sesión, tutor o materia no encontrados (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    InternalServerError:
+      description: Error interno del servidor (RFC 7807)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+  schemas:
+    EstadoSesion:
+      type: string
+      enum: [REQUESTED, CONFIRMED, REJECTED, CANCELLED, IN_SESSION, COMPLETED, REVIEWED]
+
+    ModalidadSesion:
+      type: string
+      enum: [VIRTUAL, PRESENCIAL]
+
+    SesionRequest:
+      type: object
+      required: [tutorId, materiaId, fechaHora, duracionMinutos, modalidad]
+      properties:
+        tutorId:
+          type: integer
+          format: int64
+          example: 2
+        materiaId:
+          type: integer
+          format: int64
+          example: 1
+        fechaHora:
+          type: string
+          format: date-time
+          description: Fecha y hora de inicio en hora local de Costa Rica (UTC-06:00), sin sufijo de zona. Debe estar en el futuro (FECHA_PASADA).
+          example: '2026-11-30T08:00:00'
+        duracionMinutos:
+          type: integer
+          minimum: 30
+          maximum: 240
+          multipleOf: 30
+          example: 60
+        modalidad:
+          $ref: '#/components/schemas/ModalidadSesion'
+        enlaceOUbicacion:
+          type: string
+          maxLength: 500
+          description: Obligatorio. URL https para VIRTUAL; aula o lugar (mínimo 3 caracteres) para PRESENCIAL.
+          example: https://meet.google.com/abc-defg-hij
+
+    SesionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        estudianteId:
+          type: integer
+          format: int64
+          example: 1
+        estudianteNombre:
+          type: string
+          example: Kenneth Miranda
+        tutorId:
+          type: integer
+          format: int64
+          example: 2
+        tutorNombre:
+          type: string
+          example: Sebastián Quirós
+        materiaId:
+          type: integer
+          format: int64
+          example: 1
+        materiaCodigo:
+          type: string
+          example: IF0009
+        materiaNombre:
+          type: string
+          example: Desarrollo de Software IV
+        fechaHora:
+          type: string
+          format: date-time
+          example: '2026-11-30T08:00:00'
+        fechaHoraFin:
+          type: string
+          format: date-time
+          example: '2026-11-30T09:00:00'
+        duracionMinutos:
+          type: integer
+          example: 60
+        modalidad:
+          $ref: '#/components/schemas/ModalidadSesion'
+        estado:
+          $ref: '#/components/schemas/EstadoSesion'
+        enlaceOUbicacion:
+          type: string
+          nullable: true
+          example: https://meet.google.com/abc-defg-hij
+        fechaCreacion:
+          type: string
+          format: date-time
+          example: '2026-11-23T10:00:00'
+        iniciableDesde:
+          type: string
+          format: date-time
+          description: Primer momento en que el tutor puede iniciar la sesión.
+          example: '2026-11-30T07:45:00'
+        finalizableDesde:
+          type: string
+          format: date-time
+          description: Primer momento en que el tutor puede finalizar la sesión.
+          example: '2026-11-30T08:45:00'
+        cancelableHasta:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Último momento en que el usuario autenticado puede cancelar; null si no puede cancelar.
+            ESTUDIANTE: fechaHora si REQUESTED, fechaHora - 2 h si CONFIRMED.
+            TUTOR: null si REQUESTED (debe rechazar), fechaHora - 2 h si CONFIRMED.
+            COORDINADOR: fechaHora si REQUESTED o CONFIRMED.
+            Cualquier otro estado: null.
+          example: '2026-11-30T06:00:00'
+
+    TutorResumenResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 2
+        nombreCompleto:
+          type: string
+          example: Sebastián Quirós
+        promedioCalificacion:
+          type: number
+          format: double
+          example: 4.5
+        totalEvaluaciones:
+          type: integer
+          example: 8
+
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+          example: about:blank
+        title:
+          type: string
+          example: Violación de regla de negocio
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: El tutor ya tiene una sesión confirmada que se traslapa con ese horario
+        instance:
+          type: string
+          format: uri
+          example: /api/sesiones
+        codigo:
+          type: string
+          nullable: true
+          description: Código estable del error de regla de negocio (ver la descripción general).
+          example: TRASLAPE_TUTOR
+        parametros:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Datos variables del error, por ejemplo desde, horas, paso, accion o estado.
+          example:
+            desde: '2026-11-30T07:45'
