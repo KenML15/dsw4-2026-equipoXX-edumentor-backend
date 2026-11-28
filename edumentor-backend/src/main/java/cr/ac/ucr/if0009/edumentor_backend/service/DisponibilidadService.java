@@ -141,6 +141,12 @@ public class DisponibilidadService {
             return false;
         }
 
+        Usuario tutor = usuarioRepository.findById(tutorId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Tutor no encontrado con id: " + tutorId));
+        if (tutor.getRol() != Rol.TUTOR) {
+            throw new ReglaNegocioException("El usuario indicado no tiene el rol de TUTOR");
+        }
+
         LocalDateTime fechaHoraFin = fechaHora.plusMinutes(duracion);
         if (!fechaHoraFin.toLocalDate().equals(fechaHora.toLocalDate())) {
             return false;

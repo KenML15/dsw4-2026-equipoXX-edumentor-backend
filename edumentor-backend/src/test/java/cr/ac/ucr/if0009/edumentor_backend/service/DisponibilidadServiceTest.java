@@ -5,6 +5,7 @@ import cr.ac.ucr.if0009.edumentor_backend.dto.DisponibilidadResponse;
 import cr.ac.ucr.if0009.edumentor_backend.entity.DisponibilidadTutor;
 import cr.ac.ucr.if0009.edumentor_backend.entity.Rol;
 import cr.ac.ucr.if0009.edumentor_backend.entity.Usuario;
+import cr.ac.ucr.if0009.edumentor_backend.exception.RecursoNoEncontradoException;
 import cr.ac.ucr.if0009.edumentor_backend.exception.ReglaNegocioException;
 import cr.ac.ucr.if0009.edumentor_backend.repository.DisponibilidadTutorRepository;
 import cr.ac.ucr.if0009.edumentor_backend.repository.UsuarioRepository;
@@ -165,6 +166,7 @@ class DisponibilidadServiceTest {
 
         // 2026-11-23 es lunes
         LocalDateTime fechaSesion = LocalDateTime.of(2026, 11, 23, 8, 30);
+        when(usuarioRepository.findById(2L)).thenReturn(Optional.of(tutor));
         when(disponibilidadRepository.findActivasByTutorIdAndDiaSemana(2L, DayOfWeek.MONDAY))
                 .thenReturn(List.of(bloque));
 
@@ -191,6 +193,7 @@ class DisponibilidadServiceTest {
                 .build();
 
         LocalDateTime fechaSesion = LocalDateTime.of(2026, 11, 23, 8, 30);
+        when(usuarioRepository.findById(2L)).thenReturn(Optional.of(tutor));
         when(disponibilidadRepository.findActivasByTutorIdAndDiaSemana(2L, DayOfWeek.MONDAY))
                 .thenReturn(List.of(bloque1, bloque2));
 
@@ -209,9 +212,33 @@ class DisponibilidadServiceTest {
                 .build();
 
         LocalDateTime fechaSesion = LocalDateTime.of(2026, 11, 23, 9, 30);
+        when(usuarioRepository.findById(2L)).thenReturn(Optional.of(tutor));
         when(disponibilidadRepository.findActivasByTutorIdAndDiaSemana(2L, DayOfWeek.MONDAY))
                 .thenReturn(List.of(bloque));
 
         assertFalse(disponibilidadService.estaDisponible(2L, fechaSesion, 60));
+    }
+
+    @Test
+    void estaDisponible_ConUsuarioInexistente_DebeLanzarRecursoNoEncontrado() {
+        when(usuarioRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThrows(
+                RecursoNoEncontradoException.class,
+                () -> disponibilidadService.estaDisponible(99L, LocalDateTime.of(2026, 11, 23, 8, 30), 60)
+        );
+        verify(disponibilidadRepository, never()).findActivasByTutorIdAndDiaSemana(any(), any());
+    }
+
+    @Test
+    void estaDisponible_ConUsuarioQueNoEsTutor_DebeLanzarReglaNegocioException() {
+        Usuario estudiante = Usuario.builder().id(1L).email("estudiante@ucr.ac.cr").rol(Rol.ESTUDIANTE).build();
+        when(usuarioRepository.findById(1L)).thenReturn(Optional.of(estudiante));
+
+        assertThrows(
+                ReglaNegocioException.class,
+                () -> disponibilidadService.estaDisponible(1L, LocalDateTime.of(2026, 11, 23, 8, 30), 60)
+        );
+        verify(disponibilidadRepository, never()).findActivasByTutorIdAndDiaSemana(any(), any());
     }
 }
